@@ -251,10 +251,21 @@
 
         // Function to parse CSV text into process objects
         function parseCSV(text) {
-            const lines = text.trim().split('\n');
+            const lines = text.trim().split(/\r?\n/); // Handles both \n and \r\n newlines
             if (lines.length === 0) return [];
 
-            const header = lines[0].split(',').map(h => h.trim());
+            const header = [];
+            // Regex to parse header line, handling quoted fields and escaped quotes
+            const headerRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
+            let match;
+            let headerLine = lines[0];
+            while ((match = headerRegex.exec(headerLine)) !== null) {
+                // match[1] is the content of a quoted field (unescaped), match[2] is the content of an unquoted field
+                header.push((match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2] || '').trim());
+            }
+            // Reset regex lastIndex for subsequent uses if it's reused on the same regex object
+            headerRegex.lastIndex = 0;
+
             const data = [];
 
             const columnMap = {
@@ -280,19 +291,38 @@
                 }
             }
 
+            // Regex to parse a line into fields, handling quotes and escaped quotes
+            const lineParserRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
+
             for (let i = 1; i < lines.length; i++) {
-                const values = lines[i].split(',');
-                if (values.length >= header.length) {
-                    data.push({
-                        id: nextProcessId++,
-                        name: values[columnMap['Nome do Processo']]?.trim() || '',
-                        startDate: values[columnMap['Data de Início']]?.trim() || '',
-                        endDate: values[columnMap['Data de Fim']]?.trim() || '',
-                        status: values[columnMap['Status']]?.trim() || 'Pendente',
-                        assignedTo: values[columnMap['Responsável']]?.trim() || '',
-                        department: values[columnMap['Diretoria']]?.trim() || ''
-                    });
+                const currentLine = lines[i];
+                if (!currentLine.trim()) continue; // Skip empty lines
+
+                const values = [];
+                let lineMatch;
+                lineParserRegex.lastIndex = 0; // Reset for each new line
+
+                while ((lineMatch = lineParserRegex.exec(currentLine)) !== null) {
+                    // If the field was quoted (lineMatch[1] is defined), take its content and unescape "" to "
+                    // Otherwise, take the unquoted content (lineMatch[2])
+                    values.push(lineMatch[1] !== undefined ? lineMatch[1].replace(/""/g, '"') : lineMatch[2] || '');
                 }
+
+                // Basic check for number of fields to ensure line is not malformed significantly
+                if (values.length < header.length) {
+                     console.warn(`Linha ${i + 1} incompleta ou malformada no CSV: ${currentLine}. Ignorando.`);
+                     continue; // Skip malformed lines
+                }
+
+                data.push({
+                    id: nextProcessId++,
+                    name: values[columnMap['Nome do Processo']]?.trim() || '',
+                    startDate: values[columnMap['Data de Início']]?.trim() || '',
+                    endDate: values[columnMap['Data de Fim']]?.trim() || '',
+                    status: values[columnMap['Status']]?.trim() || 'Pendente',
+                    assignedTo: values[columnMap['Responsável']]?.trim() || '',
+                    department: values[columnMap['Diretoria']]?.trim() || ''
+                });
             }
             return data;
         }
