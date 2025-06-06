@@ -266,22 +266,32 @@
 
         // Function to parse CSV text into process objects
         function parseCSV(text) {
+            console.log('Parsing CSV text (first 200 chars):', text.substring(0, Math.min(text.length, 200)) + (text.length > 200 ? '...' : ''));
             const lines = text.trim().split(/\r?\n/);
-            if (lines.length === 0) return [];
+            if (lines.length === 0) {
+                console.log('No lines found in CSV text.');
+                return [];
+            }
 
             const header = [];
-            const headerRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
+            // Regex to parse a CSV row, handling quoted fields and escaped quotes
+            // It looks for a field that starts with a quote, captures its content (handling escaped quotes)
+            // OR a field that doesn't start with a quote, capturing its content up to the next comma or end of line.
+            const csvFieldRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
+
             let headerLine = lines[0];
+            console.log('CSV Header Line:', headerLine);
             let match;
-            while ((match = headerRegex.exec(headerLine)) !== null) {
-                header.push((match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2] || '').trim());
+            while ((match = csvFieldRegex.exec(headerLine)) !== null) {
+                let fieldContent = match[1] !== undefined ? match[1].replace(/""/g, '"') : (match[2] || '').trim(); // Trim only unquoted header fields
+                header.push(fieldContent);
             }
-            headerRegex.lastIndex = 0;
+            csvFieldRegex.lastIndex = 0; // Reset for reuse on data lines
+            console.log('Parsed Header:', header);
 
             const data = [];
             let columnMap = {};
 
-            // Updated required columns to match user's request
             const requiredColumns = [
                 'Diretoria', 'Nome do Processo', 'Data de Reunião',
                 'Status', 'Responsável'
@@ -291,7 +301,9 @@
             let allRequiredFound = true;
 
             requiredColumns.forEach(reqCol => {
+                // Normalize required column name for comparison
                 const normalizedReqCol = reqCol.toLowerCase().trim();
+                // Find index in header by normalizing header name for comparison
                 const foundIndex = header.findIndex(h => h.toLowerCase().trim() === normalizedReqCol);
                 if (foundIndex !== -1) {
                     tempColumnMap[reqCol] = foundIndex;
@@ -305,38 +317,53 @@
                 return [];
             }
             columnMap = tempColumnMap;
-
-            const lineParserRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
+            console.log('Column Map (reqCol -> index):', columnMap);
 
             for (let i = 1; i < lines.length; i++) {
                 const currentLine = lines[i];
-                if (!currentLine.trim()) continue;
+                if (!currentLine.trim()) continue; // Skip empty lines
 
+                console.log(`Processing CSV line ${i + 1}:`, currentLine);
                 const values = [];
                 let lineMatch;
-                lineParserRegex.lastIndex = 0;
+                csvFieldRegex.lastIndex = 0; // Reset for each new line
 
-                while ((lineMatch = lineParserRegex.exec(currentLine)) !== null) {
-                    values.push(lineMatch[1] !== undefined ? lineMatch[1].replace(/""/g, '"') : lineMatch[2] || '');
+                // Execute regex on currentLine to get all fields
+                while ((lineMatch = csvFieldRegex.exec(currentLine)) !== null) {
+                    let field;
+                    if (lineMatch[1] !== undefined) { // It's a quoted field
+                        field = lineMatch[1].replace(/""/g, '"'); // Unescape internal double quotes
+                        // No trim here: preserve leading/trailing spaces within quotes
+                    } else { // It's an unquoted field
+                        field = lineMatch[2] || '';
+                        field = field.trim(); // Trim unquoted fields
+                    }
+                    values.push(field);
                 }
+                console.log(`Parsed values for line ${i + 1}:`, values);
 
+                // Basic check for number of fields to ensure line is not malformed significantly
                 if (values.length < header.length) {
-                     console.warn(`Linha ${i + 1} incompleta ou malformada no CSV: ${currentLine}. Ignorando.`);
+                     console.warn(`Linha ${i + 1} incompleta ou malformada no CSV: "${currentLine}". Ignorando.`);
                      continue;
                 }
                 
-                // Assign values to new process object based on updated column names
-                const department = values[columnMap['Diretoria']]?.trim() || '';
-                const processName = values[columnMap['Nome do Processo']]?.trim() || '';
-                const meetingDate = values[columnMap['Data de Reunião']]?.trim() || ''; // Renamed from startDate
-                const status = values[columnMap['Status']]?.trim() || 'Pendente';
-                const assignedTo = values[columnMap['Responsável']]?.trim() || '';
+                // Assign values to new process object based on updated column names and their parsed values
+                // Apply trim() here to the final extracted value for consistency if needed, but the parsing logic
+                // above now handles preserving quoted internal spaces while trimming unquoted ones.
+                const department = values[columnMap['Diretoria']] || '';
+                const processName = values[columnMap['Nome do Processo']] || '';
+                const meetingDate = values[columnMap['Data de Reunião']] || '';
+                const status = values[columnMap['Status']] || 'Pendente';
+                const assignedTo = values[columnMap['Responsável']] || '';
+
+                console.log(`Extracted values for line ${i + 1}:`, { department, processName, meetingDate, status, assignedTo });
 
                 data.push({
                     id: nextProcessId++,
-                    department: department, // New order for data model
+                    department: department,
                     name: processName,
-                    meetingDate: meetingDate, // Updated field
+                    meetingDate: meetingDate,
                     status: status,
                     assignedTo: assignedTo
                 });
@@ -551,6 +578,7 @@
 
             processes.forEach(process => {
                 const row = [
+                    // Ensure that any internal double quotes are escaped (e.g., " -> "") and the field is wrapped in quotes
                     `"${process.department.replace(/"/g, '""')}"`, // New field
                     `"${process.name.replace(/"/g, '""')}"`,
                     process.meetingDate, // Updated field
