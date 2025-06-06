@@ -89,7 +89,7 @@
         <!-- Seção de Carregamento de Planilha -->
         <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-sm">
             <h2 class="text-2xl font-semibold text-gray-700 mb-4">Carregar Processos da Planilha (CSV)</h2>
-            <p class="text-gray-600 mb-4">Carregue um arquivo CSV contendo os processos. O CSV deve ter as colunas: "Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável".</p>
+            <p class="text-gray-600 mb-4">Carregue um arquivo CSV contendo os processos. O CSV deve ter as colunas: "Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável" e "Diretoria".</p>
             <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-700
                 file:mr-4 file:py-2 file:px-4
                 file:rounded-full file:border-0
@@ -120,6 +120,9 @@
                             </th>
                             <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                                 Responsável
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Diretoria
                             </th>
                             <th scope="col" class="relative px-6 py-3">
                                 <span class="sr-only">Ações</span>
@@ -168,7 +171,7 @@
         let processes = []; // Array para armazenar os dados dos processos
         let nextProcessId = 1; // Para IDs únicos de novos processos
 
-        // Função para exibir mensagens ao usuário
+        // Function to display messages to the user
         function showMessage(message, type = 'success') {
             messageBox.textContent = message;
             messageBox.className = 'message-box show';
@@ -188,22 +191,23 @@
             }, 3000);
         }
 
-        // Função para parsear CSV
+        // Function to parse CSV text into process objects
         function parseCSV(text) {
             const lines = text.trim().split('\n');
             if (lines.length === 0) return [];
 
-            // A primeira linha é o cabeçalho
+            // The first line is the header
             const header = lines[0].split(',').map(h => h.trim());
             const data = [];
 
-            // Mapeia os nomes das colunas esperadas para seus índices no CSV
+            // Map expected column names to their indices in the CSV
             const columnMap = {
                 'Nome do Processo': -1,
                 'Data de Início': -1,
                 'Data de Fim': -1,
                 'Status': -1,
-                'Responsável': -1
+                'Responsável': -1,
+                'Diretoria': -1 // New column
             };
 
             header.forEach((col, index) => {
@@ -212,8 +216,8 @@
                 }
             });
 
-            // Verifica se todas as colunas essenciais estão presentes
-            const requiredColumns = ['Nome do Processo', 'Data de Início', 'Data de Fim', 'Status', 'Responsável'];
+            // Check if all essential columns are present
+            const requiredColumns = ['Nome do Processo', 'Data de Início', 'Data de Fim', 'Status', 'Responsável', 'Diretoria']; // Updated required columns
             for (const col of requiredColumns) {
                 if (columnMap[col] === -1) {
                     showMessage(`Erro: A coluna "${col}" não foi encontrada no CSV.`, 'error');
@@ -223,23 +227,24 @@
 
             for (let i = 1; i < lines.length; i++) {
                 const values = lines[i].split(',');
-                if (values.length >= header.length) { // Garante que a linha não está vazia ou incompleta
+                if (values.length >= header.length) { // Ensures the row is not empty or incomplete
                     data.push({
                         id: nextProcessId++,
                         name: values[columnMap['Nome do Processo']]?.trim() || '',
                         startDate: values[columnMap['Data de Início']]?.trim() || '',
                         endDate: values[columnMap['Data de Fim']]?.trim() || '',
                         status: values[columnMap['Status']]?.trim() || 'Pendente',
-                        assignedTo: values[columnMap['Responsável']]?.trim() || ''
+                        assignedTo: values[columnMap['Responsável']]?.trim() || '',
+                        department: values[columnMap['Diretoria']]?.trim() || '' // New field
                     });
                 }
             }
             return data;
         }
 
-        // Função para renderizar a tabela de processos
+        // Function to render the processes table
         function renderProcessesTable() {
-            processesTableBody.innerHTML = ''; // Limpa a tabela
+            processesTableBody.innerHTML = ''; // Clears the table
             processes.forEach((process, index) => {
                 const row = document.createElement('tr');
                 row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
@@ -263,6 +268,9 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <input type="text" value="${process.assignedTo}" data-id="${process.id}" data-field="assignedTo" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
                     </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <input type="text" value="${process.department}" data-id="${process.id}" data-field="department" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                         <button data-id="${process.id}" class="delete-btn text-red-600 hover:text-red-900 transition ease-in-out duration-150">
                             Excluir
@@ -274,7 +282,7 @@
             addTableEventListeners();
         }
 
-        // Adiciona event listeners para os inputs da tabela
+        // Adds event listeners for table inputs
         function addTableEventListeners() {
             processesTableBody.querySelectorAll('input, select').forEach(input => {
                 input.addEventListener('change', (e) => {
@@ -284,7 +292,7 @@
                     const processIndex = processes.findIndex(p => p.id === id);
                     if (processIndex !== -1) {
                         processes[processIndex][field] = value;
-                        renderTimeline(); // Re-renderiza o cronograma ao alterar dados
+                        renderTimeline(); // Re-render timeline when data changes
                     }
                 });
             });
@@ -300,7 +308,7 @@
             });
         }
 
-        // Função para renderizar a visualização do cronograma
+        // Function to render the timeline visualization
         function renderTimeline() {
             timelineGrid.innerHTML = '';
             timelineLabels.innerHTML = '';
@@ -310,7 +318,7 @@
                 return;
             }
 
-            // Encontra as datas mínimas e máximas para a escala do cronograma
+            // Find min and max dates for the timeline scale
             let allDates = [];
             processes.forEach(p => {
                 if (p.startDate) allDates.push(new Date(p.startDate));
@@ -325,21 +333,21 @@
             const minDate = new Date(Math.min(...allDates));
             const maxDate = new Date(Math.max(...allDates));
 
-            // Adiciona um buffer para as datas
-            minDate.setDate(minDate.getDate() - 7); // Uma semana antes
-            maxDate.setDate(maxDate.getDate() + 7); // Uma semana depois
+            // Add a buffer for dates
+            minDate.setDate(minDate.getDate() - 7); // One week before
+            maxDate.setDate(maxDate.getDate() + 7); // One week after
 
-            const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24); // Diferença em dias
+            const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24); // Difference in days
 
-            // Ajusta a altura da grade do cronograma com base no número de processos
-            timelineGrid.style.minHeight = `${processes.length * 30 + 20}px`; // 30px por linha + padding
+            // Adjust timeline grid height based on number of processes
+            timelineGrid.style.minHeight = `${processes.length * 30 + 20}px`; // 30px per row + padding
 
             processes.forEach((process, index) => {
                 const startDate = new Date(process.startDate);
                 const endDate = new Date(process.endDate);
 
                 if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                    // Ignora processos com datas inválidas para o cronograma visual
+                    // Ignore processes with invalid dates for visual timeline
                     console.warn(`Datas inválidas para o processo: ${process.name}. Ignorando na visualização do cronograma.`);
                     return;
                 }
@@ -354,15 +362,15 @@
                 bar.className = `timeline-bar ${getStatusClass(process.status)}`;
                 bar.style.left = `${left}%`;
                 bar.style.width = `${width}%`;
-                bar.style.top = `${index * 30 + 10}px`; // Posição vertical para cada processo
+                bar.style.top = `${index * 30 + 10}px`; // Vertical position for each process
                 bar.title = `${process.name} (${process.status}) - ${process.startDate} a ${process.endDate}`;
-                bar.textContent = process.name; // Exibe o nome do processo na barra
+                bar.textContent = process.name; // Display process name on the bar
 
                 timelineGrid.appendChild(bar);
             });
 
-            // Adiciona rótulos de data (ex: a cada 15 dias ou mês)
-            const numLabels = 5; // Número de rótulos a exibir
+            // Add date labels (e.g., every 15 days or month)
+            const numLabels = 5; // Number of labels to display
             for (let i = 0; i < numLabels; i++) {
                 const currentDate = new Date(minDate.getTime() + (totalDays / (numLabels - 1)) * i * (1000 * 60 * 60 * 24));
                 const span = document.createElement('span');
@@ -371,7 +379,7 @@
             }
         }
 
-        // Mapeia status para classes CSS
+        // Maps status to CSS classes
         function getStatusClass(status) {
             switch (status.toLowerCase()) {
                 case 'concluído':
@@ -381,11 +389,11 @@
                 case 'pendente':
                     return 'status-pendente';
                 default:
-                    return ''; // Default para status desconhecido
+                    return ''; // Default for unknown status
             }
         }
 
-        // Evento de carregamento de arquivo
+        // File upload event
         csvFile.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
@@ -411,15 +419,16 @@
             }
         });
 
-        // Evento para adicionar um novo processo
+        // Event to add a new process
         addProcessBtn.addEventListener('click', () => {
             const newProcess = {
                 id: nextProcessId++,
                 name: 'Novo Processo',
-                startDate: new Date().toISOString().split('T')[0], // Data atual
-                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Uma semana a partir de hoje
+                startDate: new Date().toISOString().split('T')[0], // Current date
+                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // One week from today
                 status: 'Pendente',
-                assignedTo: ''
+                assignedTo: '',
+                department: '' // New field
             };
             processes.push(newProcess);
             renderProcessesTable();
@@ -427,24 +436,25 @@
             showMessage('Novo processo adicionado!', 'success');
         });
 
-        // Evento para salvar as alterações (download como CSV)
+        // Event to save changes (download as CSV)
         saveChangesBtn.addEventListener('click', () => {
             if (processes.length === 0) {
                 showMessage('Não há processos para salvar.', 'error');
                 return;
             }
 
-            const header = ["Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável"];
+            const header = ["Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável", "Diretoria"]; // Updated header
             const csvRows = [];
             csvRows.push(header.join(','));
 
             processes.forEach(process => {
                 const row = [
-                    `"${process.name.replace(/"/g, '""')}"`, // Escapa aspas duplas
+                    `"${process.name.replace(/"/g, '""')}"`, // Escape double quotes
                     process.startDate,
                     process.endDate,
                     process.status,
-                    `"${process.assignedTo.replace(/"/g, '""')}"`
+                    `"${process.assignedTo.replace(/"/g, '""')}"`,
+                    `"${process.department.replace(/"/g, '""')}"` // New field
                 ];
                 csvRows.push(row.join(','));
             });
@@ -460,7 +470,7 @@
             showMessage('Processos salvos como CSV!', 'success');
         });
 
-        // Inicialização: renderiza a tabela e o cronograma com dados vazios ou iniciais
+        // Initialization: render table and timeline with empty or initial data
         document.addEventListener('DOMContentLoaded', () => {
             renderProcessesTable();
             renderTimeline();
