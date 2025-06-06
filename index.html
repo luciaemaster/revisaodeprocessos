@@ -120,6 +120,7 @@
         <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-sm">
             <h2 class="text-2xl font-semibold text-gray-700 mb-4">Carregar Processos da Planilha (CSV)</h2>
             <p class="text-gray-600 mb-4">Carregue um arquivo CSV contendo os processos. O CSV deve ter as colunas: "Diretoria", "Nome do Processo", "Data de Reunião", "Status" e "Responsável".</p>
+            <p class="text-red-600 font-semibold mb-4">ATENÇÃO: Não use vírgulas (,) ou quebras de linha nos campos de texto da planilha, pois isso pode corromper o arquivo ao salvar e carregar novamente.</p>
             <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-700
                 file:mr-4 file:py-2 file:px-4
                 file:rounded-full file:border-0
@@ -282,20 +283,12 @@
                 return [];
             }
 
-            // Regex to split a CSV line into fields, handling commas inside quotes and escaped quotes ("")
-            // This regex ensures fields like "Name, with comma" and "Name with ""quotes""" are parsed correctly
-            const csvLineSplitRegex = /(".*?"|[^",]+)(?=\s*,|\s*$)/g;
-
+            // Simplificado: dividir a linha por vírgula e trimar cada campo.
+            // Não lida com vírgulas ou quebras de linha dentro dos campos.
             const headerLine = lines[0];
             console.log('DEBUG: CSV Header Line:', headerLine);
-            const headerFields = (headerLine.match(csvLineSplitRegex) || []).map(field => {
-                // If field starts and ends with quotes, remove them and unescape internal double quotes
-                if (field.startsWith('"') && field.endsWith('"')) {
-                    return field.substring(1, field.length - 1).replace(/""/g, '"').trim();
-                }
-                return field.trim();
-            });
-            console.log('DEBUG: Parsed Header (robust):', headerFields);
+            const headerFields = headerLine.split(',').map(field => field.trim());
+            console.log('DEBUG: Parsed Header (simplified):', headerFields);
 
             const data = [];
             let columnMap = {};
@@ -330,13 +323,9 @@
                 if (!currentLine.trim()) continue; // Skip empty lines
 
                 console.log(`DEBUG: Processing CSV line ${i + 1}:`, currentLine);
-                const values = (currentLine.match(csvLineSplitRegex) || []).map(field => {
-                    if (field.startsWith('"') && field.endsWith('"')) {
-                        return field.substring(1, field.length - 1).replace(/""/g, '"').trim(); // Trim after unescaping
-                    }
-                    return field.trim();
-                });
-                console.log(`DEBUG: Parsed values for line ${i + 1} (robust):`, values);
+                // Simplificado: dividir a linha por vírgula e trimar cada campo.
+                const values = currentLine.split(',').map(field => field.trim());
+                console.log(`DEBUG: Parsed values for line ${i + 1} (simplified):`, values);
 
                 if (values.length < headerFields.length) {
                      console.warn(`DEBUG: Linha ${i + 1} incompleta ou malformada no CSV: "${currentLine}". Esperado ${headerFields.length} campos, encontrado ${values.length}. Ignorando.`);
@@ -544,9 +533,9 @@
         ADD_PROCESS_BTN.addEventListener('click', () => {
             const newProcess = {
                 id: nextProcessId++,
-                department: '', // New field
+                department: '',
                 name: 'Novo Processo',
-                meetingDate: new Date().toISOString().split('T')[0], // Renamed from startDate
+                meetingDate: new Date().toISOString().split('T')[0],
                 status: 'Pendente',
                 assignedTo: ''
             };
@@ -563,14 +552,12 @@
                 return;
             }
 
-            // Updated header order to match new column names
             const header = ["Diretoria", "Nome do Processo", "Data de Reunião", "Status", "Responsável"];
             const csvRows = [];
             csvRows.push(header.join(','));
 
             processes.forEach(process => {
                 const row = [
-                    // Changed to NOT wrap in quotes and NOT escape internal quotes
                     process.department,
                     process.name,
                     process.meetingDate,
@@ -601,7 +588,6 @@
             renderCalendar();
         });
 
-        // Add 'Mês Atual' button functionality
         const ZOOM_CURRENT_MONTH_BTN = document.createElement('button');
         ZOOM_CURRENT_MONTH_BTN.id = 'zoomCurrentMonthBtn';
         ZOOM_CURRENT_MONTH_BTN.className = 'px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition ease-in-out duration-150';
