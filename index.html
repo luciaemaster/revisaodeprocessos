@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ferramenta de Revisão de Processos</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* bg-gray-100 */
+        }
+        .message-box {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background-color: #4CAF50; /* bg-green-500 */
+            color: white;
+            padding: 15px 20px;
+            border-radius: 8px; /* rounded-lg */
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1); /* shadow-md */
+            z-index: 1000;
+            display: none; /* hidden by default */
+            opacity: 0;
+            transition: opacity 0.5s ease-in-out;
+        }
+        .message-box.show {
+            display: block;
+            opacity: 1;
+        }
+        .timeline-bar {
+            height: 20px;
+            background-color: #3b82f6; /* bg-blue-500 */
+            border-radius: 4px; /* rounded-md */
+            position: absolute;
+            top: 0;
+            left: 0;
+            cursor: pointer;
+            overflow: hidden;
+            white-space: nowrap;
+            text-overflow: ellipsis;
+            padding-left: 5px;
+            color: white;
+            display: flex;
+            align-items: center;
+            font-size: 0.875rem; /* text-sm */
+            box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05); /* shadow-sm */
+            transition: background-color 0.2s ease;
+        }
+        .timeline-bar.status-concluido { background-color: #10b981; /* bg-green-500 */ }
+        .timeline-bar.status-em-progresso { background-color: #f59e0b; /* bg-yellow-500 */ }
+        .timeline-bar.status-pendente { background-color: #ef4444; /* bg-red-500 */ }
+        .timeline-bar:hover {
+            background-color: #2563eb; /* bg-blue-700 */
+        }
+        .timeline-bar.status-concluido:hover { background-color: #059669; }
+        .timeline-bar.status-em-progresso:hover { background-color: #d97706; }
+        .timeline-bar.status-pendente:hover { background-color: #dc2626; }
+
+        .timeline-grid {
+            position: relative;
+            min-height: 200px; /* Adjust based on expected number of processes */
+        }
+        .timeline-row {
+            height: 30px; /* Space for each bar */
+            border-bottom: 1px dashed #e5e7eb; /* border-gray-200 */
+        }
+        .timeline-labels {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.875rem; /* text-sm */
+            color: #4b5563; /* text-gray-600 */
+            margin-top: 10px;
+        }
+        .timeline-labels span {
+            flex-grow: 1;
+            text-align: center;
+        }
+    </style>
+</head>
+<body class="p-6">
+
+    <div class="message-box" id="messageBox"></div>
+
+    <div class="max-w-7xl mx-auto bg-white p-8 rounded-xl shadow-lg">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6">Ferramenta de Revisão de Processos</h1>
+
+        <!-- Seção de Carregamento de Planilha -->
+        <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-sm">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Carregar Processos da Planilha (CSV)</h2>
+            <p class="text-gray-600 mb-4">Carregue um arquivo CSV contendo os processos. O CSV deve ter as colunas: "Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável".</p>
+            <input type="file" id="csvFile" accept=".csv" class="block w-full text-sm text-gray-700
+                file:mr-4 file:py-2 file:px-4
+                file:rounded-full file:border-0
+                file:text-sm file:font-semibold
+                file:bg-blue-50 file:text-blue-700
+                hover:file:bg-blue-100 cursor-pointer">
+            <p id="loadingIndicator" class="text-blue-600 mt-2 hidden">Carregando...</p>
+        </div>
+
+        <!-- Seção de Tabela Editável de Processos -->
+        <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-sm">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Cronograma de Revisão (Tabela Editável)</h2>
+            <div class="overflow-x-auto rounded-lg border border-gray-200 shadow-sm">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Nome do Processo
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Data de Início
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Data de Fim
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Status
+                            </th>
+                            <th scope="col" class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                                Responsável
+                            </th>
+                            <th scope="col" class="relative px-6 py-3">
+                                <span class="sr-only">Ações</span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="processesTableBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Linhas de processo serão inseridas aqui via JavaScript -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="mt-4 flex justify-end space-x-3">
+                <button id="addProcessBtn" class="px-4 py-2 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 transition ease-in-out duration-150">
+                    Adicionar Processo
+                </button>
+                <button id="saveChangesBtn" class="px-4 py-2 bg-green-600 text-white font-semibold rounded-md shadow-md hover:bg-green-700 transition ease-in-out duration-150">
+                    Salvar Alterações (Download CSV)
+                </button>
+            </div>
+        </div>
+
+        <!-- Seção de Visualização do Cronograma -->
+        <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-sm">
+            <h2 class="text-2xl font-semibold text-gray-700 mb-4">Visualização do Cronograma</h2>
+            <div id="timelineContainer" class="relative bg-white p-4 rounded-lg shadow-inner overflow-hidden">
+                <div id="timelineGrid" class="timeline-grid">
+                    <!-- Barras do cronograma serão inseridas aqui via JavaScript -->
+                </div>
+                <div id="timelineLabels" class="timeline-labels mt-4">
+                    <!-- Rótulos de data serão inseridos aqui via JavaScript -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const csvFile = document.getElementById('csvFile');
+        const processesTableBody = document.getElementById('processesTableBody');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const addProcessBtn = document.getElementById('addProcessBtn');
+        const saveChangesBtn = document.getElementById('saveChangesBtn');
+        const timelineGrid = document.getElementById('timelineGrid');
+        const timelineLabels = document.getElementById('timelineLabels');
+        const messageBox = document.getElementById('messageBox');
+
+        let processes = []; // Array para armazenar os dados dos processos
+        let nextProcessId = 1; // Para IDs únicos de novos processos
+
+        // Função para exibir mensagens ao usuário
+        function showMessage(message, type = 'success') {
+            messageBox.textContent = message;
+            messageBox.className = 'message-box show';
+            if (type === 'error') {
+                messageBox.classList.add('bg-red-500');
+                messageBox.classList.remove('bg-green-500');
+            } else {
+                messageBox.classList.add('bg-green-500');
+                messageBox.classList.remove('bg-red-500');
+            }
+            setTimeout(() => {
+                messageBox.classList.remove('show');
+                // Give some time for transition before hiding completely
+                setTimeout(() => {
+                    messageBox.style.display = 'none';
+                }, 500);
+            }, 3000);
+        }
+
+        // Função para parsear CSV
+        function parseCSV(text) {
+            const lines = text.trim().split('\n');
+            if (lines.length === 0) return [];
+
+            // A primeira linha é o cabeçalho
+            const header = lines[0].split(',').map(h => h.trim());
+            const data = [];
+
+            // Mapeia os nomes das colunas esperadas para seus índices no CSV
+            const columnMap = {
+                'Nome do Processo': -1,
+                'Data de Início': -1,
+                'Data de Fim': -1,
+                'Status': -1,
+                'Responsável': -1
+            };
+
+            header.forEach((col, index) => {
+                if (columnMap.hasOwnProperty(col)) {
+                    columnMap[col] = index;
+                }
+            });
+
+            // Verifica se todas as colunas essenciais estão presentes
+            const requiredColumns = ['Nome do Processo', 'Data de Início', 'Data de Fim', 'Status', 'Responsável'];
+            for (const col of requiredColumns) {
+                if (columnMap[col] === -1) {
+                    showMessage(`Erro: A coluna "${col}" não foi encontrada no CSV.`, 'error');
+                    return [];
+                }
+            }
+
+            for (let i = 1; i < lines.length; i++) {
+                const values = lines[i].split(',');
+                if (values.length >= header.length) { // Garante que a linha não está vazia ou incompleta
+                    data.push({
+                        id: nextProcessId++,
+                        name: values[columnMap['Nome do Processo']]?.trim() || '',
+                        startDate: values[columnMap['Data de Início']]?.trim() || '',
+                        endDate: values[columnMap['Data de Fim']]?.trim() || '',
+                        status: values[columnMap['Status']]?.trim() || 'Pendente',
+                        assignedTo: values[columnMap['Responsável']]?.trim() || ''
+                    });
+                }
+            }
+            return data;
+        }
+
+        // Função para renderizar a tabela de processos
+        function renderProcessesTable() {
+            processesTableBody.innerHTML = ''; // Limpa a tabela
+            processes.forEach((process, index) => {
+                const row = document.createElement('tr');
+                row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
+                row.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                        <input type="text" value="${process.name}" data-id="${process.id}" data-field="name" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <input type="date" value="${process.startDate}" data-id="${process.id}" data-field="startDate" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <input type="date" value="${process.endDate}" data-id="${process.id}" data-field="endDate" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <select data-id="${process.id}" data-field="status" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                            <option value="Pendente" ${process.status === 'Pendente' ? 'selected' : ''}>Pendente</option>
+                            <option value="Em Progresso" ${process.status === 'Em Progresso' ? 'selected' : ''}>Em Progresso</option>
+                            <option value="Concluído" ${process.status === 'Concluído' ? 'selected' : ''}>Concluído</option>
+                        </select>
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        <input type="text" value="${process.assignedTo}" data-id="${process.id}" data-field="assignedTo" class="w-full p-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500">
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                        <button data-id="${process.id}" class="delete-btn text-red-600 hover:text-red-900 transition ease-in-out duration-150">
+                            Excluir
+                        </button>
+                    </td>
+                `;
+                processesTableBody.appendChild(row);
+            });
+            addTableEventListeners();
+        }
+
+        // Adiciona event listeners para os inputs da tabela
+        function addTableEventListeners() {
+            processesTableBody.querySelectorAll('input, select').forEach(input => {
+                input.addEventListener('change', (e) => {
+                    const id = parseInt(e.target.dataset.id);
+                    const field = e.target.dataset.field;
+                    const value = e.target.value;
+                    const processIndex = processes.findIndex(p => p.id === id);
+                    if (processIndex !== -1) {
+                        processes[processIndex][field] = value;
+                        renderTimeline(); // Re-renderiza o cronograma ao alterar dados
+                    }
+                });
+            });
+
+            processesTableBody.querySelectorAll('.delete-btn').forEach(button => {
+                button.addEventListener('click', (e) => {
+                    const idToDelete = parseInt(e.target.dataset.id);
+                    processes = processes.filter(p => p.id !== idToDelete);
+                    renderProcessesTable();
+                    renderTimeline();
+                    showMessage('Processo excluído com sucesso!', 'success');
+                });
+            });
+        }
+
+        // Função para renderizar a visualização do cronograma
+        function renderTimeline() {
+            timelineGrid.innerHTML = '';
+            timelineLabels.innerHTML = '';
+
+            if (processes.length === 0) {
+                timelineGrid.style.minHeight = '50px';
+                return;
+            }
+
+            // Encontra as datas mínimas e máximas para a escala do cronograma
+            let allDates = [];
+            processes.forEach(p => {
+                if (p.startDate) allDates.push(new Date(p.startDate));
+                if (p.endDate) allDates.push(new Date(p.endDate));
+            });
+
+            if (allDates.length === 0) {
+                timelineGrid.style.minHeight = '50px';
+                return;
+            }
+
+            const minDate = new Date(Math.min(...allDates));
+            const maxDate = new Date(Math.max(...allDates));
+
+            // Adiciona um buffer para as datas
+            minDate.setDate(minDate.getDate() - 7); // Uma semana antes
+            maxDate.setDate(maxDate.getDate() + 7); // Uma semana depois
+
+            const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24); // Diferença em dias
+
+            // Ajusta a altura da grade do cronograma com base no número de processos
+            timelineGrid.style.minHeight = `${processes.length * 30 + 20}px`; // 30px por linha + padding
+
+            processes.forEach((process, index) => {
+                const startDate = new Date(process.startDate);
+                const endDate = new Date(process.endDate);
+
+                if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+                    // Ignora processos com datas inválidas para o cronograma visual
+                    console.warn(`Datas inválidas para o processo: ${process.name}. Ignorando na visualização do cronograma.`);
+                    return;
+                }
+
+                const startOffsetDays = (startDate - minDate) / (1000 * 60 * 60 * 24);
+                const durationDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
+
+                const left = (startOffsetDays / totalDays) * 100;
+                const width = (durationDays / totalDays) * 100;
+
+                const bar = document.createElement('div');
+                bar.className = `timeline-bar ${getStatusClass(process.status)}`;
+                bar.style.left = `${left}%`;
+                bar.style.width = `${width}%`;
+                bar.style.top = `${index * 30 + 10}px`; // Posição vertical para cada processo
+                bar.title = `${process.name} (${process.status}) - ${process.startDate} a ${process.endDate}`;
+                bar.textContent = process.name; // Exibe o nome do processo na barra
+
+                timelineGrid.appendChild(bar);
+            });
+
+            // Adiciona rótulos de data (ex: a cada 15 dias ou mês)
+            const numLabels = 5; // Número de rótulos a exibir
+            for (let i = 0; i < numLabels; i++) {
+                const currentDate = new Date(minDate.getTime() + (totalDays / (numLabels - 1)) * i * (1000 * 60 * 60 * 24));
+                const span = document.createElement('span');
+                span.textContent = currentDate.toLocaleDateString('pt-BR');
+                timelineLabels.appendChild(span);
+            }
+        }
+
+        // Mapeia status para classes CSS
+        function getStatusClass(status) {
+            switch (status.toLowerCase()) {
+                case 'concluído':
+                    return 'status-concluido';
+                case 'em progresso':
+                    return 'status-em-progresso';
+                case 'pendente':
+                    return 'status-pendente';
+                default:
+                    return ''; // Default para status desconhecido
+            }
+        }
+
+        // Evento de carregamento de arquivo
+        csvFile.addEventListener('change', (event) => {
+            const file = event.target.files[0];
+            if (file) {
+                loadingIndicator.classList.remove('hidden');
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    processes = parseCSV(text);
+                    renderProcessesTable();
+                    renderTimeline();
+                    loadingIndicator.classList.add('hidden');
+                    if (processes.length > 0) {
+                        showMessage('Processos carregados com sucesso!', 'success');
+                    } else {
+                        showMessage('Nenhum processo válido encontrado no arquivo.', 'error');
+                    }
+                };
+                reader.onerror = () => {
+                    loadingIndicator.classList.add('hidden');
+                    showMessage('Erro ao ler o arquivo.', 'error');
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        // Evento para adicionar um novo processo
+        addProcessBtn.addEventListener('click', () => {
+            const newProcess = {
+                id: nextProcessId++,
+                name: 'Novo Processo',
+                startDate: new Date().toISOString().split('T')[0], // Data atual
+                endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Uma semana a partir de hoje
+                status: 'Pendente',
+                assignedTo: ''
+            };
+            processes.push(newProcess);
+            renderProcessesTable();
+            renderTimeline();
+            showMessage('Novo processo adicionado!', 'success');
+        });
+
+        // Evento para salvar as alterações (download como CSV)
+        saveChangesBtn.addEventListener('click', () => {
+            if (processes.length === 0) {
+                showMessage('Não há processos para salvar.', 'error');
+                return;
+            }
+
+            const header = ["Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável"];
+            const csvRows = [];
+            csvRows.push(header.join(','));
+
+            processes.forEach(process => {
+                const row = [
+                    `"${process.name.replace(/"/g, '""')}"`, // Escapa aspas duplas
+                    process.startDate,
+                    process.endDate,
+                    process.status,
+                    `"${process.assignedTo.replace(/"/g, '""')}"`
+                ];
+                csvRows.push(row.join(','));
+            });
+
+            const csvString = csvRows.join('\n');
+            const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'processos_revisados.csv';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showMessage('Processos salvos como CSV!', 'success');
+        });
+
+        // Inicialização: renderiza a tabela e o cronograma com dados vazios ou iniciais
+        document.addEventListener('DOMContentLoaded', () => {
+            renderProcessesTable();
+            renderTimeline();
+        });
+
+    </script>
+</body>
+</html>
