@@ -256,40 +256,45 @@
 
             const header = [];
             // Regex to parse header line, handling quoted fields and escaped quotes
+            // This regex captures either a quoted field (group 1) or an unquoted field (group 2)
             const headerRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
-            let match;
             let headerLine = lines[0];
+            let match;
             while ((match = headerRegex.exec(headerLine)) !== null) {
-                // match[1] is the content of a quoted field (unescaped), match[2] is the content of an unquoted field
+                // If match[1] (quoted content) is defined, use it and unescape "" to "
+                // Otherwise, use match[2] (unquoted content)
                 header.push((match[1] !== undefined ? match[1].replace(/""/g, '"') : match[2] || '').trim());
             }
             // Reset regex lastIndex for subsequent uses if it's reused on the same regex object
             headerRegex.lastIndex = 0;
 
             const data = [];
+            let columnMap = {}; // Use let because we'll reassign it
 
-            const columnMap = {
-                'Nome do Processo': -1,
-                'Data de Início': -1,
-                'Data de Fim': -1,
-                'Status': -1,
-                'Responsável': -1,
-                'Diretoria': -1
-            };
+            const requiredColumns = [
+                'Nome do Processo', 'Data de Início', 'Data de Fim',
+                'Status', 'Responsável', 'Diretoria'
+            ];
 
-            header.forEach((col, index) => {
-                if (columnMap.hasOwnProperty(col)) {
-                    columnMap[col] = index;
+            // Build columnMap based on normalized (lowercase and trimmed) header names
+            const tempColumnMap = {};
+            let allRequiredFound = true;
+
+            requiredColumns.forEach(reqCol => {
+                const normalizedReqCol = reqCol.toLowerCase().trim();
+                const foundIndex = header.findIndex(h => h.toLowerCase().trim() === normalizedReqCol);
+                if (foundIndex !== -1) {
+                    tempColumnMap[reqCol] = foundIndex;
+                } else {
+                    showMessage(`Erro: A coluna "${reqCol}" não foi encontrada no CSV. Verifique se o nome está correto.`, 'error');
+                    allRequiredFound = false;
                 }
             });
 
-            const requiredColumns = ['Nome do Processo', 'Data de Início', 'Data de Fim', 'Status', 'Responsável', 'Diretoria'];
-            for (const col of requiredColumns) {
-                if (columnMap[col] === -1) {
-                    showMessage(`Erro: A coluna "${col}" não foi encontrada no CSV.`, 'error');
-                    return [];
-                }
+            if (!allRequiredFound) {
+                return []; // Exit if any required column was missing
             }
+            columnMap = tempColumnMap; // Assign to the main columnMap if all checks pass
 
             // Regex to parse a line into fields, handling quotes and escaped quotes
             const lineParserRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
@@ -313,15 +318,23 @@
                      console.warn(`Linha ${i + 1} incompleta ou malformada no CSV: ${currentLine}. Ignorando.`);
                      continue; // Skip malformed lines
                 }
+                
+                // Use columnMap to safely access values, ensuring .trim() for clean data
+                const processName = values[columnMap['Nome do Processo']]?.trim() || '';
+                const startDate = values[columnMap['Data de Início']]?.trim() || '';
+                const endDate = values[columnMap['Data de Fim']]?.trim() || '';
+                const status = values[columnMap['Status']]?.trim() || 'Pendente';
+                const assignedTo = values[columnMap['Responsável']]?.trim() || '';
+                const department = values[columnMap['Diretoria']]?.trim() || '';
 
                 data.push({
                     id: nextProcessId++,
-                    name: values[columnMap['Nome do Processo']]?.trim() || '',
-                    startDate: values[columnMap['Data de Início']]?.trim() || '',
-                    endDate: values[columnMap['Data de Fim']]?.trim() || '',
-                    status: values[columnMap['Status']]?.trim() || 'Pendente',
-                    assignedTo: values[columnMap['Responsável']]?.trim() || '',
-                    department: values[columnMap['Diretoria']]?.trim() || ''
+                    name: processName,
+                    startDate: startDate,
+                    endDate: endDate,
+                    status: status,
+                    assignedTo: assignedTo,
+                    department: department
                 });
             }
             return data;
@@ -582,6 +595,7 @@
 
             processes.forEach(process => {
                 const row = [
+                    // Ensure that any internal double quotes are escaped (e.g., " -> "") and the field is wrapped in quotes
                     `"${process.name.replace(/"/g, '""')}"`,
                     process.startDate,
                     process.endDate,
