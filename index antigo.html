@@ -570,12 +570,12 @@
 
             processes.forEach(process => {
                 const row = [
-                    // Changed to NOT wrap in quotes and NOT escape internal quotes
-                    process.department,
-                    process.name,
-                    process.meetingDate,
+                    // Ensure that any internal double quotes are escaped (e.g., " -> "") and the field is wrapped in quotes
+                    `"${process.department.replace(/"/g, '""')}"`, // New field
+                    `"${process.name.replace(/"/g, '""')}"`,
+                    process.meetingDate, // Updated field
                     process.status,
-                    process.assignedTo
+                    `"${process.assignedTo.replace(/"/g, '""')}"`
                 ];
                 csvRows.push(row.join(','));
             });
