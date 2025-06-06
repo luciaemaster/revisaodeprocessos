@@ -77,6 +77,15 @@
             flex-grow: 1;
             text-align: center;
         }
+        .today-line {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 2px;
+            background-color: #ef4444; /* Red color */
+            border-left: 1px dashed #ef4444;
+            z-index: 50; /* Above bars, below message box */
+        }
     </style>
 </head>
 <body class="p-6">
@@ -147,9 +156,15 @@
         <!-- Seção de Visualização do Cronograma -->
         <div class="mb-8 p-6 bg-gray-50 rounded-lg shadow-sm">
             <h2 class="text-2xl font-semibold text-gray-700 mb-4">Visualização do Cronograma</h2>
+            <div class="mb-4 flex space-x-2">
+                <button id="zoomAutoBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition ease-in-out duration-150">Auto</button>
+                <button id="zoomWeeklyBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition ease-in-out duration-150">Semanal</button>
+                <button id="zoomMonthlyBtn" class="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition ease-in-out duration-150">Mensal</button>
+            </div>
             <div id="timelineContainer" class="relative bg-white p-4 rounded-lg shadow-inner overflow-hidden">
                 <div id="timelineGrid" class="timeline-grid">
                     <!-- Barras do cronograma serão inseridas aqui via JavaScript -->
+                    <!-- Linha do dia atual será inserida aqui -->
                 </div>
                 <div id="timelineLabels" class="timeline-labels mt-4">
                     <!-- Rótulos de data serão inseridos aqui via JavaScript -->
@@ -159,55 +174,96 @@
     </div>
 
     <script>
-        const csvFile = document.getElementById('csvFile');
-        const processesTableBody = document.getElementById('processesTableBody');
-        const loadingIndicator = document.getElementById('loadingIndicator');
-        const addProcessBtn = document.getElementById('addProcessBtn');
-        const saveChangesBtn = document.getElementById('saveChangesBtn');
-        const timelineGrid = document.getElementById('timelineGrid');
-        const timelineLabels = document.getElementById('timelineLabels');
-        const messageBox = document.getElementById('messageBox');
+        const CSV_FILE_INPUT = document.getElementById('csvFile');
+        const PROCESSES_TABLE_BODY = document.getElementById('processesTableBody');
+        const LOADING_INDICATOR = document.getElementById('loadingIndicator');
+        const ADD_PROCESS_BTN = document.getElementById('addProcessBtn');
+        const SAVE_CHANGES_BTN = document.getElementById('saveChangesBtn');
+        const TIMELINE_GRID = document.getElementById('timelineGrid');
+        const TIMELINE_LABELS = document.getElementById('timelineLabels');
+        const MESSAGE_BOX = document.getElementById('messageBox');
 
-        let processes = []; // Array para armazenar os dados dos processos
-        let nextProcessId = 1; // Para IDs únicos de novos processos
+        const ZOOM_AUTO_BTN = document.getElementById('zoomAutoBtn');
+        const ZOOM_WEEKLY_BTN = document.getElementById('zoomWeeklyBtn');
+        const ZOOM_MONTHLY_BTN = document.getElementById('zoomMonthlyBtn');
+
+        let processes = []; // Array to store process data
+        let nextProcessId = 1; // For unique IDs of new processes
+        let currentZoomMode = 'auto'; // 'auto', 'weekly', 'monthly'
 
         // Function to display messages to the user
         function showMessage(message, type = 'success') {
-            messageBox.textContent = message;
-            messageBox.className = 'message-box show';
+            MESSAGE_BOX.textContent = message;
+            MESSAGE_BOX.className = 'message-box show';
             if (type === 'error') {
-                messageBox.classList.add('bg-red-500');
-                messageBox.classList.remove('bg-green-500');
+                MESSAGE_BOX.classList.add('bg-red-500');
+                MESSAGE_BOX.classList.remove('bg-green-500');
             } else {
-                messageBox.classList.add('bg-green-500');
-                messageBox.classList.remove('bg-red-500');
+                MESSAGE_BOX.classList.add('bg-green-500');
+                MESSAGE_BOX.classList.remove('bg-red-500');
             }
             setTimeout(() => {
-                messageBox.classList.remove('show');
-                // Give some time for transition before hiding completely
+                MESSAGE_BOX.classList.remove('show');
                 setTimeout(() => {
-                    messageBox.style.display = 'none';
-                }, 500);
+                    MESSAGE_BOX.style.display = 'none';
+                }, 500); // Give some time for transition before hiding completely
             }, 3000);
         }
+
+        // --- LocalStorage Functions ---
+        const LOCAL_STORAGE_KEY = 'processReviewerData';
+
+        function saveProcessesToLocalStorage() {
+            try {
+                localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(processes));
+                // showMessage('Dados salvos automaticamente!', 'success'); // Optional: too many messages
+            } catch (e) {
+                console.error('Erro ao salvar dados no localStorage:', e);
+                showMessage('Erro ao salvar dados automaticamente.', 'error');
+            }
+        }
+
+        function loadProcessesFromLocalStorage() {
+            try {
+                const storedData = localStorage.getItem(LOCAL_STORAGE_KEY);
+                if (storedData) {
+                    const loadedProcesses = JSON.parse(storedData);
+                    // Ensure IDs are unique and sequential after loading
+                    let maxId = 0;
+                    loadedProcesses.forEach(p => {
+                        if (p.id && p.id > maxId) {
+                            maxId = p.id;
+                        }
+                    });
+                    nextProcessId = maxId + 1;
+                    processes = loadedProcesses;
+                    showMessage('Dados carregados do armazenamento local!', 'success');
+                } else {
+                    showMessage('Nenhum dado salvo localmente encontrado.', 'info'); // 'info' is a conceptual type, message box will show green
+                }
+            } catch (e) {
+                console.error('Erro ao carregar dados do localStorage:', e);
+                showMessage('Erro ao carregar dados do armazenamento local. Carregando dados iniciais.', 'error');
+                processes = []; // Fallback to empty if load fails
+            }
+        }
+        // --- End LocalStorage Functions ---
 
         // Function to parse CSV text into process objects
         function parseCSV(text) {
             const lines = text.trim().split('\n');
             if (lines.length === 0) return [];
 
-            // The first line is the header
             const header = lines[0].split(',').map(h => h.trim());
             const data = [];
 
-            // Map expected column names to their indices in the CSV
             const columnMap = {
                 'Nome do Processo': -1,
                 'Data de Início': -1,
                 'Data de Fim': -1,
                 'Status': -1,
                 'Responsável': -1,
-                'Diretoria': -1 // New column
+                'Diretoria': -1
             };
 
             header.forEach((col, index) => {
@@ -216,8 +272,7 @@
                 }
             });
 
-            // Check if all essential columns are present
-            const requiredColumns = ['Nome do Processo', 'Data de Início', 'Data de Fim', 'Status', 'Responsável', 'Diretoria']; // Updated required columns
+            const requiredColumns = ['Nome do Processo', 'Data de Início', 'Data de Fim', 'Status', 'Responsável', 'Diretoria'];
             for (const col of requiredColumns) {
                 if (columnMap[col] === -1) {
                     showMessage(`Erro: A coluna "${col}" não foi encontrada no CSV.`, 'error');
@@ -227,7 +282,7 @@
 
             for (let i = 1; i < lines.length; i++) {
                 const values = lines[i].split(',');
-                if (values.length >= header.length) { // Ensures the row is not empty or incomplete
+                if (values.length >= header.length) {
                     data.push({
                         id: nextProcessId++,
                         name: values[columnMap['Nome do Processo']]?.trim() || '',
@@ -235,7 +290,7 @@
                         endDate: values[columnMap['Data de Fim']]?.trim() || '',
                         status: values[columnMap['Status']]?.trim() || 'Pendente',
                         assignedTo: values[columnMap['Responsável']]?.trim() || '',
-                        department: values[columnMap['Diretoria']]?.trim() || '' // New field
+                        department: values[columnMap['Diretoria']]?.trim() || ''
                     });
                 }
             }
@@ -244,7 +299,7 @@
 
         // Function to render the processes table
         function renderProcessesTable() {
-            processesTableBody.innerHTML = ''; // Clears the table
+            PROCESSES_TABLE_BODY.innerHTML = ''; // Clears the table
             processes.forEach((process, index) => {
                 const row = document.createElement('tr');
                 row.className = index % 2 === 0 ? 'bg-white' : 'bg-gray-50';
@@ -277,14 +332,14 @@
                         </button>
                     </td>
                 `;
-                processesTableBody.appendChild(row);
+                PROCESSES_TABLE_BODY.appendChild(row);
             });
             addTableEventListeners();
         }
 
         // Adds event listeners for table inputs
         function addTableEventListeners() {
-            processesTableBody.querySelectorAll('input, select').forEach(input => {
+            PROCESSES_TABLE_BODY.querySelectorAll('input, select').forEach(input => {
                 input.addEventListener('change', (e) => {
                     const id = parseInt(e.target.dataset.id);
                     const field = e.target.dataset.field;
@@ -292,15 +347,17 @@
                     const processIndex = processes.findIndex(p => p.id === id);
                     if (processIndex !== -1) {
                         processes[processIndex][field] = value;
+                        saveProcessesToLocalStorage(); // Save after change
                         renderTimeline(); // Re-render timeline when data changes
                     }
                 });
             });
 
-            processesTableBody.querySelectorAll('.delete-btn').forEach(button => {
+            PROCESSES_TABLE_BODY.querySelectorAll('.delete-btn').forEach(button => {
                 button.addEventListener('click', (e) => {
                     const idToDelete = parseInt(e.target.dataset.id);
                     processes = processes.filter(p => p.id !== idToDelete);
+                    saveProcessesToLocalStorage(); // Save after deletion
                     renderProcessesTable();
                     renderTimeline();
                     showMessage('Processo excluído com sucesso!', 'success');
@@ -310,11 +367,11 @@
 
         // Function to render the timeline visualization
         function renderTimeline() {
-            timelineGrid.innerHTML = '';
-            timelineLabels.innerHTML = '';
+            TIMELINE_GRID.innerHTML = '';
+            TIMELINE_LABELS.innerHTML = '';
 
             if (processes.length === 0) {
-                timelineGrid.style.minHeight = '50px';
+                TIMELINE_GRID.style.minHeight = '50px';
                 return;
             }
 
@@ -326,56 +383,102 @@
             });
 
             if (allDates.length === 0) {
-                timelineGrid.style.minHeight = '50px';
+                TIMELINE_GRID.style.minHeight = '50px';
                 return;
             }
 
-            const minDate = new Date(Math.min(...allDates));
-            const maxDate = new Date(Math.max(...allDates));
+            let minDate = new Date(Math.min(...allDates));
+            let maxDate = new Date(Math.max(...allDates));
 
-            // Add a buffer for dates
-            minDate.setDate(minDate.getDate() - 7); // One week before
-            maxDate.setDate(maxDate.getDate() + 7); // One week after
+            // Adjust min/max dates based on zoom mode
+            let numLabels = 5; // Default for auto
+            let dateFormatOptions = { month: 'short', day: 'numeric' }; // Default for auto
+
+            if (currentZoomMode === 'weekly') {
+                const today = new Date();
+                today.setHours(0, 0, 0, 0); // Normalize to start of day
+                // Start of the week (Sunday)
+                minDate = new Date(today);
+                minDate.setDate(today.getDate() - today.getDay());
+                maxDate = new Date(minDate);
+                maxDate.setDate(minDate.getDate() + 6); // End of the week
+
+                numLabels = 7; // One label per day
+                dateFormatOptions = { weekday: 'short', day: 'numeric' };
+            } else if (currentZoomMode === 'monthly') {
+                const today = new Date();
+                minDate = new Date(today.getFullYear(), today.getMonth(), 1); // Start of current month
+                maxDate = new Date(today.getFullYear(), today.getMonth() + 4, 0); // End of 4 months from now
+
+                numLabels = 4; // One label per month (for 4 months)
+                dateFormatOptions = { month: 'short', year: 'numeric' };
+            } else { // 'auto' mode
+                 // Add a buffer for dates in auto mode
+                minDate.setDate(minDate.getDate() - 7); // One week before
+                maxDate.setDate(maxDate.getDate() + 7); // One week after
+            }
 
             const totalDays = (maxDate - minDate) / (1000 * 60 * 60 * 24); // Difference in days
 
             // Adjust timeline grid height based on number of processes
-            timelineGrid.style.minHeight = `${processes.length * 30 + 20}px`; // 30px per row + padding
+            TIMELINE_GRID.style.minHeight = `${processes.length * 30 + 20}px`; // 30px per row + padding
 
             processes.forEach((process, index) => {
                 const startDate = new Date(process.startDate);
                 const endDate = new Date(process.endDate);
 
                 if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
-                    // Ignore processes with invalid dates for visual timeline
                     console.warn(`Datas inválidas para o processo: ${process.name}. Ignorando na visualização do cronograma.`);
                     return;
                 }
 
+                // Calculate position relative to the current minDate of the timeline
                 const startOffsetDays = (startDate - minDate) / (1000 * 60 * 60 * 24);
                 const durationDays = (endDate - startDate) / (1000 * 60 * 60 * 24);
 
-                const left = (startOffsetDays / totalDays) * 100;
-                const width = (durationDays / totalDays) * 100;
+                // Ensure bars are within the bounds of the displayed timeline for relevant dates
+                const barLeft = Math.max(0, (startOffsetDays / totalDays) * 100);
+                const barWidth = Math.min(100 - barLeft, (durationDays / totalDays) * 100);
+
 
                 const bar = document.createElement('div');
                 bar.className = `timeline-bar ${getStatusClass(process.status)}`;
-                bar.style.left = `${left}%`;
-                bar.style.width = `${width}%`;
+                bar.style.left = `${barLeft}%`;
+                bar.style.width = `${barWidth}%`;
                 bar.style.top = `${index * 30 + 10}px`; // Vertical position for each process
                 bar.title = `${process.name} (${process.status}) - ${process.startDate} a ${process.endDate}`;
                 bar.textContent = process.name; // Display process name on the bar
 
-                timelineGrid.appendChild(bar);
+                TIMELINE_GRID.appendChild(bar);
             });
 
-            // Add date labels (e.g., every 15 days or month)
-            const numLabels = 5; // Number of labels to display
+            // --- Draw Today Line ---
+            const today = new Date();
+            today.setHours(0, 0, 0, 0); // Normalize to start of day for comparison
+            const todayOffsetDays = (today - minDate) / (1000 * 60 * 60 * 24);
+            const todayLeft = (todayOffsetDays / totalDays) * 100;
+
+            if (todayLeft >= 0 && todayLeft <= 100) { // Only draw if today is within the visible range
+                const todayLine = document.createElement('div');
+                todayLine.className = 'today-line';
+                todayLine.style.left = `${todayLeft}%`;
+                TIMELINE_GRID.appendChild(todayLine);
+            }
+            // --- End Today Line ---
+
+
+            // Add date labels
             for (let i = 0; i < numLabels; i++) {
-                const currentDate = new Date(minDate.getTime() + (totalDays / (numLabels - 1)) * i * (1000 * 60 * 60 * 24));
+                const currentDate = new Date(minDate.getTime() + (totalDays / (numLabels - (currentZoomMode === 'auto' ? 1 : 0))) * i * (1000 * 60 * 60 * 24));
                 const span = document.createElement('span');
-                span.textContent = currentDate.toLocaleDateString('pt-BR');
-                timelineLabels.appendChild(span);
+
+                if (currentZoomMode === 'monthly') {
+                    // Display start of month for monthly view
+                    span.textContent = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).toLocaleDateString('pt-BR', dateFormatOptions);
+                } else {
+                    span.textContent = currentDate.toLocaleDateString('pt-BR', dateFormatOptions);
+                }
+                TIMELINE_LABELS.appendChild(span);
             }
         }
 
@@ -393,18 +496,19 @@
             }
         }
 
-        // File upload event
-        csvFile.addEventListener('change', (event) => {
+        // Event Listeners
+        CSV_FILE_INPUT.addEventListener('change', (event) => {
             const file = event.target.files[0];
             if (file) {
-                loadingIndicator.classList.remove('hidden');
+                LOADING_INDICATOR.classList.remove('hidden');
                 const reader = new FileReader();
                 reader.onload = (e) => {
                     const text = e.target.result;
                     processes = parseCSV(text);
+                    saveProcessesToLocalStorage(); // Save after CSV import
                     renderProcessesTable();
                     renderTimeline();
-                    loadingIndicator.classList.add('hidden');
+                    LOADING_INDICATOR.classList.add('hidden');
                     if (processes.length > 0) {
                         showMessage('Processos carregados com sucesso!', 'success');
                     } else {
@@ -412,15 +516,14 @@
                     }
                 };
                 reader.onerror = () => {
-                    loadingIndicator.classList.add('hidden');
+                    LOADING_INDICATOR.classList.add('hidden');
                     showMessage('Erro ao ler o arquivo.', 'error');
                 };
                 reader.readAsText(file);
             }
         });
 
-        // Event to add a new process
-        addProcessBtn.addEventListener('click', () => {
+        ADD_PROCESS_BTN.addEventListener('click', () => {
             const newProcess = {
                 id: nextProcessId++,
                 name: 'Novo Processo',
@@ -428,33 +531,33 @@
                 endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // One week from today
                 status: 'Pendente',
                 assignedTo: '',
-                department: '' // New field
+                department: ''
             };
             processes.push(newProcess);
+            saveProcessesToLocalStorage(); // Save after adding new process
             renderProcessesTable();
             renderTimeline();
             showMessage('Novo processo adicionado!', 'success');
         });
 
-        // Event to save changes (download as CSV)
-        saveChangesBtn.addEventListener('click', () => {
+        SAVE_CHANGES_BTN.addEventListener('click', () => {
             if (processes.length === 0) {
                 showMessage('Não há processos para salvar.', 'error');
                 return;
             }
 
-            const header = ["Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável", "Diretoria"]; // Updated header
+            const header = ["Nome do Processo", "Data de Início", "Data de Fim", "Status", "Responsável", "Diretoria"];
             const csvRows = [];
             csvRows.push(header.join(','));
 
             processes.forEach(process => {
                 const row = [
-                    `"${process.name.replace(/"/g, '""')}"`, // Escape double quotes
+                    `"${process.name.replace(/"/g, '""')}"`,
                     process.startDate,
                     process.endDate,
                     process.status,
                     `"${process.assignedTo.replace(/"/g, '""')}"`,
-                    `"${process.department.replace(/"/g, '""')}"` // New field
+                    `"${process.department.replace(/"/g, '""')}"`
                 ];
                 csvRows.push(row.join(','));
             });
@@ -470,8 +573,25 @@
             showMessage('Processos salvos como CSV!', 'success');
         });
 
-        // Initialization: render table and timeline with empty or initial data
+        ZOOM_AUTO_BTN.addEventListener('click', () => {
+            currentZoomMode = 'auto';
+            renderTimeline();
+        });
+
+        ZOOM_WEEKLY_BTN.addEventListener('click', () => {
+            currentZoomMode = 'weekly';
+            renderTimeline();
+        });
+
+        ZOOM_MONTHLY_BTN.addEventListener('click', () => {
+            currentZoomMode = 'monthly';
+            renderTimeline();
+        });
+
+
+        // Initialization
         document.addEventListener('DOMContentLoaded', () => {
+            loadProcessesFromLocalStorage(); // Try to load from localStorage first
             renderProcessesTable();
             renderTimeline();
         });
