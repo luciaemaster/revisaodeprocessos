@@ -266,28 +266,28 @@
 
         // Function to parse CSV text into process objects
         function parseCSV(text) {
-            console.log('Parsing CSV text (first 200 chars):', text.substring(0, Math.min(text.length, 200)) + (text.length > 200 ? '...' : ''));
+            console.log('DEBUG: Parsing CSV text (first 200 chars):', text.substring(0, Math.min(text.length, 200)) + (text.length > 200 ? '...' : ''));
             const lines = text.trim().split(/\r?\n/);
             if (lines.length === 0) {
-                console.log('No lines found in CSV text.');
+                console.log('DEBUG: No lines found in CSV text.');
                 return [];
             }
 
             const header = [];
-            // Regex to parse a CSV row, handling quoted fields and escaped quotes
-            // It looks for a field that starts with a quote, captures its content (handling escaped quotes)
-            // OR a field that doesn't start with a quote, capturing its content up to the next comma or end of line.
+            // Regex to parse a CSV field, handling quoted fields and escaped quotes
+            // Captures content of quoted field (group 1) or unquoted field (group 2).
             const csvFieldRegex = /(?:^|,)(?:"([^"]*(?:""[^"]*)*)"|([^,]*))/g;
 
             let headerLine = lines[0];
-            console.log('CSV Header Line:', headerLine);
+            console.log('DEBUG: CSV Header Line:', headerLine);
             let match;
+            // Parse header line
             while ((match = csvFieldRegex.exec(headerLine)) !== null) {
-                let fieldContent = match[1] !== undefined ? match[1].replace(/""/g, '"') : (match[2] || '').trim(); // Trim only unquoted header fields
-                header.push(fieldContent);
+                let fieldContent = match[1] !== undefined ? match[1].replace(/""/g, '"') : (match[2] || '');
+                header.push(fieldContent.trim()); // Apply trim consistently to all header fields
             }
-            csvFieldRegex.lastIndex = 0; // Reset for reuse on data lines
-            console.log('Parsed Header:', header);
+            csvFieldRegex.lastIndex = 0; // Reset regex state for reuse on data lines
+            console.log('DEBUG: Parsed Header (trimmed):', header);
 
             const data = [];
             let columnMap = {};
@@ -300,10 +300,9 @@
             const tempColumnMap = {};
             let allRequiredFound = true;
 
+            // Build columnMap based on normalized (lowercase and trimmed) header names
             requiredColumns.forEach(reqCol => {
-                // Normalize required column name for comparison
                 const normalizedReqCol = reqCol.toLowerCase().trim();
-                // Find index in header by normalizing header name for comparison
                 const foundIndex = header.findIndex(h => h.toLowerCase().trim() === normalizedReqCol);
                 if (foundIndex !== -1) {
                     tempColumnMap[reqCol] = foundIndex;
@@ -317,47 +316,44 @@
                 return [];
             }
             columnMap = tempColumnMap;
-            console.log('Column Map (reqCol -> index):', columnMap);
+            console.log('DEBUG: Column Map (reqCol -> index):', columnMap);
 
+            // Parse data lines
             for (let i = 1; i < lines.length; i++) {
                 const currentLine = lines[i];
                 if (!currentLine.trim()) continue; // Skip empty lines
 
-                console.log(`Processing CSV line ${i + 1}:`, currentLine);
+                console.log(`DEBUG: Processing CSV line ${i + 1}:`, currentLine);
                 const values = [];
                 let lineMatch;
-                csvFieldRegex.lastIndex = 0; // Reset for each new line
+                csvFieldRegex.lastIndex = 0; // Reset regex state for each new line
 
                 // Execute regex on currentLine to get all fields
                 while ((lineMatch = csvFieldRegex.exec(currentLine)) !== null) {
                     let field;
                     if (lineMatch[1] !== undefined) { // It's a quoted field
                         field = lineMatch[1].replace(/""/g, '"'); // Unescape internal double quotes
-                        // No trim here: preserve leading/trailing spaces within quotes
                     } else { // It's an unquoted field
                         field = lineMatch[2] || '';
-                        field = field.trim(); // Trim unquoted fields
                     }
-                    values.push(field);
+                    values.push(field.trim()); // Apply trim consistently to all data fields
                 }
-                console.log(`Parsed values for line ${i + 1}:`, values);
+                console.log(`DEBUG: Parsed values for line ${i + 1} (trimmed):`, values);
 
                 // Basic check for number of fields to ensure line is not malformed significantly
                 if (values.length < header.length) {
-                     console.warn(`Linha ${i + 1} incompleta ou malformada no CSV: "${currentLine}". Ignorando.`);
+                     console.warn(`DEBUG: Linha ${i + 1} incompleta ou malformada no CSV: "${currentLine}". Ignorando.`);
                      continue;
                 }
                 
                 // Assign values to new process object based on updated column names and their parsed values
-                // Apply trim() here to the final extracted value for consistency if needed, but the parsing logic
-                // above now handles preserving quoted internal spaces while trimming unquoted ones.
                 const department = values[columnMap['Diretoria']] || '';
                 const processName = values[columnMap['Nome do Processo']] || '';
                 const meetingDate = values[columnMap['Data de Reunião']] || '';
                 const status = values[columnMap['Status']] || 'Pendente';
                 const assignedTo = values[columnMap['Responsável']] || '';
 
-                console.log(`Extracted values for line ${i + 1}:`, { department, processName, meetingDate, status, assignedTo });
+                console.log(`DEBUG: Extracted values for line ${i + 1} for process object:`, { department, processName, meetingDate, status, assignedTo });
 
                 data.push({
                     id: nextProcessId++,
